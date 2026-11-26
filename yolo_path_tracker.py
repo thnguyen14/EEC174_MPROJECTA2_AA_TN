@@ -26,12 +26,70 @@ for _ in range(total_frames):
     ret, frame = cap.read()
     if not ret:
         break
-
-    # - Convert frame to blob
+    input_blob = cv2.dnn.blobFromImage(frame, 1 / 255.0, (416, 416), swapRB=True, crop=False)
     # - Use YOLO net to detect objects
+    net.setInput(input_blob)
+    output = net.forward(yolo_layers)
+    bounding_boxes = []
+    confidences = []
+    classes = []
+    probability_minimum = 0.5
+    threshold = 0.3
+    h, w = frame.shape[:2]
+    for result in output:
+        for detection in result:
+            scores = detection[5:]
+            class_current = np.argmax(scores)
+            confidence_current = scores[class_current]
+            #Keeps only people
+            if confidence_current > probability_minimum and class_current == 0:
+                box_current = detection[0:4] * np.array([w, h, w, h])
+                x_center, y_center, box_width, box_height = box_current.astype('int')
+                x_min = int(x_center - (box_width / 2))
+                y_min = int(y_center - (box_height / 2))
+                bounding_boxes.append([x_min, y_min, int(box_width), int(box_height)])
+                confidences.append(float(confidence_current))
+                classes.append(class_current)
     # - Apply Non-Maximum Suppression (NMS) to filter out overlapping boxes
+    results = cv2.dnn.NMSBoxes(bounding_boxes, confidences, probability_minimum, threshold)
+    coco_labels = 80
+    np.random.seed(42)
+    colours = np.random.randint(0, 255, size=(coco_labels, 3), dtype='uint8')
     # - Update the tracker with the centroids of detected objects
+    centroids = []
+    #This variable below stores the indices of the bounding boxes that we want to keep
+    #from the bounding box list
+    kept_boxes = {}
+    if len(results) > 0:
+        for i in results.flatten():
+            x_min, y_min = bounding_boxes[i][0], bounding_boxes[i][1]
+            box_width, box_height = bounding_boxes[i][2], bounding_boxes[i][3]
+            centroid =  (x_min + box_width/2 , y_min + box_height/2)
+            centroids.append(centroid)
+            kept_boxes[centroid] = i
+
+    objects = tracker.update(centroids)
+    paths = tracker.get_paths()
     # - Draw bounding boxes, trails, and labels on the frame
+    for id,centroid in objects.items():
+        if tracker.lost_frames[id] > 0:
+            #Means that the object is not seen in this frame
+            continue
+        i = kept_boxes[centroid]
+        x_min, y_min, box_width, box_height = bounding_boxes[i]
+        cx, cy = int(centroid[0]),int(centroid[1])
+        colour_box = [int(j) for j in colours[id % coco_labels]]
+
+        #Bounding Box plus filled circle in the middle
+        cv2.rectangle(frame, (x_min, y_min), (x_min + box_width, y_min + box_height),
+                                colour_box, 3)
+        cv2.circle(frame, (cx,cy), 10, colour_box, -1)
+        text = f"{id}"
+        cv2.putText(frame, text, (cx, cy - 7), cv2.FONT_HERSHEY_SIMPLEX, 1.5, colour_box, 5)
+
+        #Trail behind the circle
+        centroid_points = np.array(paths[id][-15:],dtype=np.int32)
+        cv2.polylines(frame,[centroid_points],False,colour_box, 2)
 
     # Write the processed frame to the output video
     out_vid.write(frame)

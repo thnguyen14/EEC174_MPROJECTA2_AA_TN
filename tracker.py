@@ -13,10 +13,12 @@ class Tracker:
         self.maxLost = maxLost
         #stores how many frames were lost per object id
         self.lost_frames = {}
+
         #stores the path of the objects
         #also keeps the first centroid
         self.paths = {}
-        self.next_object_id = 1
+
+        self.next_object_id = 0
 
     def register(self, centroid):
         """
@@ -89,7 +91,7 @@ class Tracker:
             last_positions.append(self.paths[id][-1])
         distances = self._distance(last_positions,inputCentroids)
 
-        #This code basically stores the distance calculations between each of the
+        #This code stores the distance calculations between each of the
         #currently recorded objects and the new input centroids
         #Row and column will be used to identify the object_id and specific input centroid respectively
         paired_distance_calculations = []
@@ -116,9 +118,9 @@ class Tracker:
 
             #New centroid matches an objects old centroid
             object_id = obj_ids[row]
-            next_pont = inputCentroids[col]
+            next_point = inputCentroids[col]
 
-            self.paths[object_id].append(next_pont)
+            self.paths[object_id].append(next_point)
             self.lost_frames[object_id] = 0
 
             matched_rows.add(row)
@@ -162,8 +164,16 @@ class Tracker:
         Returns:
         Matrix of distances between each pair of centroids from set 'a' and 'b'.
         """
+
+        #a and b reshaped into numpy arrays
+        #-1 means use as many rows needed, 2 fixed number of columns
+
         a = np.asarray(a, dtype=float).reshape(-1,2)
         b = np.asarray(b, dtype=float).reshape(-1,2)
+
+        #subtracts all parts of b from all parts of a
+        #norm finds distance/pythagorean hypotnuse from a and b
+        #axis = 2 leaves a table of distances
         return np.linalg.norm(a[:,None,:] -b[None,:,:], axis = 2)
 
         
